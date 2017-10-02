@@ -5,8 +5,12 @@
 #include <time.h>
 #include "parser.h"
 #include <dirent.h>
+#include <unistd.h>
 #include <signal.h>
 #include <signal.h>
+#include <syscall.h>
+#include <sys/types.h>
+
 
 #define TAM 100
 
@@ -20,19 +24,21 @@ static void handler()
 }
 static void handlerPause()
 {
-	done_waiting=1;
+  done_waiting=1;
 }
 
 void mydir(char* directorio, int n);
 void mypwd(int opt);
 void mytime();
 void mypause();
+void mycd(char** items, int n);
+void mycp(char** items);
 
 int main ()
 {
   signal(SIGINT, handler);
   char ** items;
-  int i, num, background;
+  int num, background;
   char expresion[TAM];
   int salir = 0;
 
@@ -43,80 +49,119 @@ int main ()
   num = separaItems (expresion, &items, &background);
 
   if(strcmp(items[0],"mydir")==0){
-	mydir(items[1],num);
-	}
+  mydir(items[1],num);
+  }
   else if(strcmp(items[0],"mypwd")==0){
-	mypwd(1);
-	}	
-  else if(strcmp(items[0],"mycd")==0){
-	printf("La orden fue %s.\n", items[0]);
-	}
-  else if(strcmp(items[0],"mycp")==0){
-	printf("La orden fue %s.\n", items[0]);
-	}
+  mypwd(1);
+  }
+  else if(strcmp(items[0],"mycd")==0){//listo
+    if(background==1){
+      pid_t hijo = fork();
+      if(hijo==0){
+        mycd(items,num);
+      }
+    }
+    else
+      mycd(items,num);
+  }
+  else if(strcmp(items[0],"mycp")==0){//listo
+    if(background==1){
+      pid_t hijo = fork();
+      if(hijo==0){
+        mycp(items);
+      }
+    }
+    else
+      mycp(items);
+  }
   else if(strcmp(items[0],"myexit")==0){
-	printf("Saliendo del CLI.\n");
-	salir=1;
-	}
+  printf("Saliendo del CLI.\n");
+  salir=1;
+  }
   else if(strcmp(items[0],"myecho")==0){
-	for (int i = 1; i < num; i++) {
-  	   printf("%s ", items[i]);
+  for (int i = 1; i < num; i++) {
+       printf("%s ", items[i]);
       }
     printf("\n");
-	}
+  }
   else if(strcmp(items[0],"myclr")==0){
-	printf("\e[1H\e[2J");
-	}
+  printf("\e[1H\e[2J");
+  }
   else if(strcmp(items[0],"mykill")==0){
-  	printf("%s %s\n",items[1],items[2]);
-  	int status;
-  	pid_t returnKillValue;
-  	pid_t pidFork = fork();
-  	returnKillValue = kill(items[2], items[1]);
-  	if(returnKillValue){
+    /*printf("%s %s\n",items[1],items[2]);
+    int status;
+    pid_t returnKillValue;
+    pid_t pidFork = fork();
+    returnKillValue = kill(items[2], items[1]);
+    if(returnKillValue){
             printf("No se pudo matar el proceso.\n");
             waitpid(items[2], &status, 0);
         } else {
             printf("Proceso eliminado.\n");
         }
-	//kill(items[2],items[1]);
-	}
+  //kill(items[2],items[1]);*/
+    if(strcmp(items[1],"SIGKILL")==0){
+      pid_t i = fork();
+      if( i == 0){
+        char* sh = "/home/lis/Desktop/SOJulian/SOLab3/mykill";
+        char* args[2];
+        args[0]=items[2];
+        args[1]=NULL;
+        printf("Hola desde el hijo.\n");
+        execv(sh, args);
+        //_exit(1);
+        /*char comando[100]="sh mykill.sh ";
+        strcat(comando,items[2]);
+        printf("%s",comando);
+        system(comando);*/
+      }
+    }
+  }
   else if(strcmp(items[0],"mytime")==0){
-  	mytime();
-	}
+    mytime();
+  }
   else if(strcmp(items[0],"mypause")==0){
-	mypause();
-	}
+    if(background==1){
+      pid_t hijo = fork();
+      if(hijo==0){
+        mypause();
+      }
+    }
+    else
+      mypause();
+  }
+  else
+    printf("bash: %s: No se encontró la orden\n",items[0] );
 
   }
   return 0;
 }
 
 void mytime(){
-	struct tm* ptm;
-  	struct timeval tv;
-  	char tiempoString[40];
-	int time=gettimeofday(&tv,NULL);
-	if(time==0){
-		ptm= localtime(&tv.tv_sec);
-		strftime (tiempoString,sizeof(tiempoString), "%Y-%m-%d %H:%M:%S",ptm);
-		printf("%s\n",tiempoString);
-	}
+  struct tm* ptm;
+    struct timeval tv;
+    char tiempoString[40];
+  int time=gettimeofday(&tv,NULL);
+  if(time==0){
+    ptm= localtime(&tv.tv_sec);
+    strftime (tiempoString,sizeof(tiempoString), "%Y-%m-%d %H:%M:%S",ptm);
+    printf("%s\n",tiempoString);
+  }
 }
 
 void mypwd(int opt){
-	char cwd[1024];
+  char cwd[1024];
 
-	if(getcwd(cwd,sizeof(cwd)) != NULL){
-		if(opt == 1){
-			fprintf(stdout, "%s\n",cwd);
-		}
-		else if (opt == 2){
-			fprintf(stdout, "User@MyCli:%s# ",cwd);
-		}
-	}
-	else
-		perror("getcwd() error\n");
+  if(getcwd(cwd,sizeof(cwd)) != NULL){
+    if(opt == 1){
+      fprintf(stdout, "%s\n",cwd);
+    }
+    else if (opt == 2){
+      fprintf(stdout, "\033[33mUser@MyCli\033[0m:\033[32m%s\033[0m# ",cwd);
+    }
+  }
+  else
+    perror("getcwd() error\n");
 }
 
 
@@ -148,4 +193,25 @@ void mypause(){
   done_waiting = 0;
   while ( !done_waiting )
     ;
+}
+
+void mycd(char** items, int n) {
+  if (n<=2) {
+    if (chdir(items[1])!=0)
+      printf("Error. No existe o no es posible cambiar al directorio \n");
+  }
+  else
+    printf("Error. Ingrese una ruta adecuada.\n");
+}
+
+void mycp(char** items){
+  FILE *arch1 , *arch2;
+   int datos =0;
+   arch1 = fopen(items[1], "r");
+   arch2 = fopen(items[2], "w");
+   while ( (datos = fgetc (arch1)) != EOF ) {
+       fputc(datos, arch2 );
+   }
+   fclose(arch1);
+   fclose(arch2);
 }
